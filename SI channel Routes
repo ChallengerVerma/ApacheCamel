@@ -1,0 +1,93 @@
+@Configuration
+@EnableIntegration
+public class KafkaIntegrationConfig {
+
+    @Autowired
+    private KafkaProperties kafkaProperties;
+
+    @Autowired
+    private MyService myService;
+
+    @Autowired
+    private MyService2 myService2;
+
+    @Bean
+    public KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter() {
+        ContainerProperties containerProperties = new ContainerProperties("topic1");
+        ConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(kafkaProperties.buildConsumerProperties());
+        KafkaMessageListenerContainer<String, String> messageListenerContainer = new KafkaMessageListenerContainer<>(consumerFactory, containerProperties);
+        messageListenerContainer.setAutoStartup(false);
+        KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter = new KafkaMessageDrivenChannelAdapter<>(messageListenerContainer);
+        kafkaMessageDrivenChannelAdapter.setOutputChannelName("myServiceInputChannel");
+        return kafkaMessageDrivenChannelAdapter;
+    }
+
+    @Bean
+    public IntegrationFlow myServiceIntegrationFlow() {
+        return IntegrationFlows.from("myServiceInputChannel")
+                .handle(myService::process)
+                .log()
+                .channel("topic2Channel")
+                .get();
+    }
+
+    @Bean
+    public KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter2() {
+        ContainerProperties containerProperties = new ContainerProperties("topic2");
+        ConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(kafkaProperties.buildConsumerProperties());
+        KafkaMessageListenerContainer<String, String> messageListenerContainer = new KafkaMessageListenerContainer<>(consumerFactory, containerProperties);
+        messageListenerContainer.setAutoStartup(false);
+        KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter = new KafkaMessageDrivenChannelAdapter<>(messageListenerContainer);
+        kafkaMessageDrivenChannelAdapter.setOutputChannelName("myService2InputChannel");
+        return kafkaMessageDrivenChannelAdapter;
+    }
+
+    @Bean
+    public IntegrationFlow myService2IntegrationFlow() {
+        return IntegrationFlows.from("myService2InputChannel")
+                .handle(myService2::process)
+                .log()
+                .channel("topic3Channel")
+                .get();
+    }
+
+    @Bean
+    public KafkaTemplate<String, String> kafkaTemplate() {
+        ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties());
+        return new KafkaTemplate<>(producerFactory);
+    }
+
+    @Bean
+    public MessageChannel topic2Channel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public KafkaMessageHandler<String, String> kafkaMessageHandler() {
+        ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties());
+        KafkaMessageHandler<String, String> kafkaMessageHandler = new KafkaMessageHandler<>(producerFactory);
+        kafkaMessageHandler.setTopicExpression(new LiteralExpression("topic2"));
+        return kafkaMessageHandler;
+    }
+
+    @Bean
+    public MessageChannel topic3Channel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public KafkaMessageHandler<String, String> kafkaMessageHandler2() {
+        ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties());
+        KafkaMessageHandler<String, String> kafkaMessageHandler = new KafkaMessageHandler<>(producerFactory);
+        kafkaMessageHandler.setTopicExpression(new LiteralExpression("topic3"));
+        return kafkaMessageHandler;
+    }
+
+    @Bean
+    public IntegrationFlow outboundIntegrationFlow() {
+        return IntegrationFlows.from("topic2Channel")
+                .handle(kafkaMessageHandler())
+                .channel("topic3Channel")
+                .get();
+    }
+}
