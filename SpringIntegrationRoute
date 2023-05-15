@@ -51,3 +51,98 @@ public class KafkaIntegrationConfig {
     }
 
 }
+
+//===================improvised same above code=============================================
+
+@Configuration
+@EnableIntegration
+public class KafkaIntegrationConfig {
+
+    private final KafkaProperties kafkaProperties;
+
+    private final MyService myService;
+
+    private final MyService2 myService2;
+
+    public KafkaIntegrationConfig(KafkaProperties kafkaProperties, MyService myService, MyService2 myService2) {
+        this.kafkaProperties = kafkaProperties;
+        this.myService = myService;
+        this.myService2 = myService2;
+    }
+
+    // Kafka Consumer 1
+
+    @Bean
+    public KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter() {
+        ContainerProperties containerProperties = new ContainerProperties("topic1");
+        ConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(kafkaProperties.buildConsumerProperties());
+        KafkaMessageListenerContainer<String, String> messageListenerContainer = new KafkaMessageListenerContainer<>(consumerFactory, containerProperties);
+        messageListenerContainer.setAutoStartup(false);
+        KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter = new KafkaMessageDrivenChannelAdapter<>(messageListenerContainer);
+        kafkaMessageDrivenChannelAdapter.setOutputChannelName("myServiceInputChannel");
+        return kafkaMessageDrivenChannelAdapter;
+    }
+
+    // Kafka Consumer 1 -> MyService -> Kafka Producer 1
+
+    @Bean
+    public IntegrationFlow myServiceIntegrationFlow() {
+        return IntegrationFlows.from("myServiceInputChannel")
+                .handle(myService::process)
+                .log()
+                .channel("topic2Channel")
+                .get();
+    }
+
+    // Kafka Consumer 2
+
+    @Bean
+    public KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter2() {
+        ContainerProperties containerProperties = new ContainerProperties("topic2");
+        ConsumerFactory<String, String> consumerFactory = new DefaultKafkaConsumerFactory<>(kafkaProperties.buildConsumerProperties());
+        KafkaMessageListenerContainer<String, String> messageListenerContainer = new KafkaMessageListenerContainer<>(consumerFactory, containerProperties);
+        messageListenerContainer.setAutoStartup(false);
+        KafkaMessageDrivenChannelAdapter<String, String> kafkaMessageDrivenChannelAdapter = new KafkaMessageDrivenChannelAdapter<>(messageListenerContainer);
+        kafkaMessageDrivenChannelAdapter.setOutputChannelName("myService2InputChannel");
+        return kafkaMessageDrivenChannelAdapter;
+    }
+
+    // Kafka Consumer 2 -> MyService2 -> Kafka Producer 2
+
+    @Bean
+    public IntegrationFlow myService2IntegrationFlow() {
+        return IntegrationFlows.from("myService2InputChannel")
+                .handle(myService2::process)
+                .log()
+                .channel("topic3Channel")
+                .get();
+    }
+
+    // Kafka Producer 1
+
+    @Bean
+    public MessageChannel topic2Channel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public KafkaMessageHandler<String, String> kafkaMessageHandler() {
+        ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties());
+        KafkaMessageHandler<String, String> kafkaMessageHandler = new KafkaMessageHandler<>(producerFactory);
+        kafkaMessageHandler.setTopicExpression(new LiteralExpression("topic2"));
+        return kafkaMessageHandler;
+    }
+
+    // Kafka Producer 2
+
+    @Bean
+    public MessageChannel topic3Channel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public KafkaMessageHandler<String, String> kafkaMessageHandler2() {
+        ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(kafkaProperties.buildProducerProperties());
+        KafkaMessageHandler<String, String> kafkaMessageHandler = new KafkaMessageHandler<>(producerFactory);
+        kafkaMessageHandler.setTopicExpression(new LiteralExpression("topic3"));
+
